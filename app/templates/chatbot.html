@@ -1,0 +1,389 @@
+{% extends "base.html" %}
+
+{% block content %}
+<h2>SSL Certificate Assistant</h2>
+
+<div class="chatbot-container">
+    <div class="chatbot-sidebar">
+        <h3>Domains with Issues</h3>
+        {% if errored_domains %}
+            <div class="errored-domains-list">
+                {% for domain in errored_domains %}
+                <div class="domain-item">
+                    <div class="domain-name">{{ domain.name }}</div>
+                    <div class="domain-status status-{{ domain.status }}">{{ domain.status|title }}</div>
+                </div>
+                {% endfor %}
+            </div>
+        {% else %}
+            <p class="no-errors">All certificates are healthy! 🎉</p>
+        {% endif %}
+
+        <h3>Suggested Questions</h3>
+        <div class="suggestions">
+            {% for suggestion in suggestions %}
+            <button class="suggestion-btn" data-question="{{ suggestion }}">
+                {{ suggestion }}
+            </button>
+            {% endfor %}
+        </div>
+    </div>
+
+    <div class="chatbot-main">
+        <div class="chat-messages" id="chatMessages">
+            <div class="message assistant">
+                <div class="message-content">
+                    <p>👋 Hello! I'm your SSL certificate troubleshooting assistant powered by AWS Bedrock.</p>
+                    <p>I can help you:</p>
+                    <ul>
+                        <li>Diagnose certificate errors</li>
+                        <li>Explain SSL/TLS concepts</li>
+                        <li>Suggest troubleshooting steps</li>
+                        <li>Recommend best practices</li>
+                    </ul>
+                    <p>Ask me anything about your SSL certificates!</p>
+                </div>
+            </div>
+        </div>
+
+        <div class="chat-input-container">
+            <textarea
+                id="chatInput"
+                class="chat-input"
+                placeholder="Ask about SSL certificate issues..."
+                rows="2"
+            ></textarea>
+            <button id="sendButton" class="btn btn-primary send-btn">
+                Send
+            </button>
+        </div>
+
+        <div class="chat-status" id="chatStatus"></div>
+    </div>
+</div>
+
+<script>
+let conversationHistory = [];
+
+document.addEventListener('DOMContentLoaded', function() {
+    const chatInput = document.getElementById('chatInput');
+    const sendButton = document.getElementById('sendButton');
+    const chatMessages = document.getElementById('chatMessages');
+    const chatStatus = document.getElementById('chatStatus');
+    const suggestionButtons = document.querySelectorAll('.suggestion-btn');
+
+    // Send message function
+    async function sendMessage() {
+        const message = chatInput.value.trim();
+
+        if (!message) return;
+
+        // Disable input while processing
+        chatInput.disabled = true;
+        sendButton.disabled = true;
+        chatStatus.textContent = 'Thinking...';
+
+        // Add user message to UI
+        addMessage(message, 'user');
+        chatInput.value = '';
+
+        try {
+            // Call API
+            const response = await fetch('/api/chat', {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json'
+                },
+                body: JSON.stringify({
+                    message: message,
+                    history: conversationHistory
+                })
+            });
+
+            const data = await response.json();
+
+            if (response.ok) {
+                // Update conversation history
+                conversationHistory = data.history;
+
+                // Add assistant response to UI
+                addMessage(data.message, 'assistant');
+                chatStatus.textContent = '';
+            } else {
+                chatStatus.textContent = 'Error: ' + (data.error || 'Failed to get response');
+                chatStatus.style.color = 'var(--danger-color)';
+            }
+        } catch (error) {
+            console.error('Chat error:', error);
+            chatStatus.textContent = 'Error: Unable to connect to chatbot';
+            chatStatus.style.color = 'var(--danger-color)';
+        } finally {
+            // Re-enable input
+            chatInput.disabled = false;
+            sendButton.disabled = false;
+            chatInput.focus();
+        }
+    }
+
+    // Add message to chat UI
+    function addMessage(text, sender) {
+        const messageDiv = document.createElement('div');
+        messageDiv.className = `message ${sender}`;
+
+        const contentDiv = document.createElement('div');
+        contentDiv.className = 'message-content';
+
+        // Format text with basic markdown-style formatting
+        let formattedText = text
+            // Preserve line breaks
+            .replace(/\n/g, '<br>')
+            // Bold text **text**
+            .replace(/\*\*(.+?)\*\*/g, '<strong>$1</strong>')
+            // Convert numbered lists
+            .replace(/^(\d+)\.\s(.+)$/gm, '<div class="list-item">$1. $2</div>')
+            // Convert bullet points
+            .replace(/^[-*]\s(.+)$/gm, '<div class="list-item">• $1</div>');
+
+        contentDiv.innerHTML = formattedText;
+
+        messageDiv.appendChild(contentDiv);
+        chatMessages.appendChild(messageDiv);
+
+        // Scroll to bottom
+        chatMessages.scrollTop = chatMessages.scrollHeight;
+    }
+
+    // Event listeners
+    sendButton.addEventListener('click', sendMessage);
+
+    chatInput.addEventListener('keydown', function(e) {
+        if (e.key === 'Enter' && !e.shiftKey) {
+            e.preventDefault();
+            sendMessage();
+        }
+    });
+
+    // Suggestion button click handlers
+    suggestionButtons.forEach(button => {
+        button.addEventListener('click', function() {
+            const question = this.getAttribute('data-question');
+            chatInput.value = question;
+            chatInput.focus();
+        });
+    });
+
+    // Focus input on load
+    chatInput.focus();
+});
+</script>
+
+<style>
+.chatbot-container {
+    display: grid;
+    grid-template-columns: 300px 1fr;
+    gap: 20px;
+    height: calc(100vh - 250px);
+    min-height: 500px;
+}
+
+.chatbot-sidebar {
+    background: white;
+    border-radius: 8px;
+    padding: 20px;
+    box-shadow: 0 2px 10px rgba(0, 0, 0, 0.1);
+    overflow-y: auto;
+}
+
+.chatbot-sidebar h3 {
+    margin-top: 0;
+    margin-bottom: 15px;
+    font-size: 1.1rem;
+    color: var(--dark-gray);
+}
+
+.errored-domains-list {
+    margin-bottom: 25px;
+}
+
+.domain-item {
+    padding: 10px;
+    margin-bottom: 8px;
+    background: #f8f9fa;
+    border-radius: 4px;
+    border-left: 3px solid var(--danger-color);
+}
+
+.domain-name {
+    font-weight: 600;
+    margin-bottom: 4px;
+}
+
+.domain-status {
+    font-size: 0.85rem;
+    padding: 2px 8px;
+    border-radius: 3px;
+    display: inline-block;
+}
+
+.domain-status.status-error {
+    background: #fee;
+    color: var(--danger-color);
+}
+
+.domain-status.status-unknown {
+    background: #f5f5f5;
+    color: var(--gray-color);
+}
+
+.no-errors {
+    color: var(--success-color);
+    font-style: italic;
+}
+
+.suggestions {
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+}
+
+.suggestion-btn {
+    text-align: left;
+    padding: 10px;
+    background: #f8f9fa;
+    border: 1px solid #dee2e6;
+    border-radius: 4px;
+    cursor: pointer;
+    font-size: 0.9rem;
+    transition: all 0.2s;
+}
+
+.suggestion-btn:hover {
+    background: var(--light-gray);
+    border-color: var(--primary-color);
+}
+
+.chatbot-main {
+    display: flex;
+    flex-direction: column;
+    background: white;
+    border-radius: 8px;
+    box-shadow: 0 2px 10px rgba(0, 0, 0, 0.1);
+    overflow: hidden;
+}
+
+.chat-messages {
+    flex: 1;
+    overflow-y: auto;
+    padding: 20px;
+    display: flex;
+    flex-direction: column;
+    gap: 15px;
+}
+
+.message {
+    display: flex;
+    max-width: 80%;
+}
+
+.message.user {
+    align-self: flex-end;
+}
+
+.message.assistant {
+    align-self: flex-start;
+}
+
+.message-content {
+    padding: 12px 16px;
+    border-radius: 8px;
+    line-height: 1.5;
+}
+
+.message.user .message-content {
+    background: var(--primary-color);
+    color: white;
+}
+
+.message.assistant .message-content {
+    background: #f8f9fa;
+    color: var(--dark-gray);
+}
+
+.message-content ul {
+    margin: 10px 0;
+    padding-left: 20px;
+}
+
+.message-content p {
+    margin: 8px 0;
+}
+
+.message-content p:first-child {
+    margin-top: 0;
+}
+
+.message-content p:last-child {
+    margin-bottom: 0;
+}
+
+.message-content .list-item {
+    margin: 4px 0;
+    padding-left: 10px;
+}
+
+.message-content strong {
+    font-weight: 600;
+    color: #2c3e50;
+}
+
+.chat-input-container {
+    display: flex;
+    gap: 10px;
+    padding: 15px;
+    border-top: 1px solid #dee2e6;
+    background: #f8f9fa;
+}
+
+.chat-input {
+    flex: 1;
+    padding: 10px;
+    border: 1px solid #ddd;
+    border-radius: 4px;
+    font-size: 1rem;
+    font-family: inherit;
+    resize: vertical;
+    min-height: 40px;
+}
+
+.send-btn {
+    padding: 10px 24px;
+    white-space: nowrap;
+}
+
+.chat-status {
+    padding: 8px 15px;
+    font-size: 0.9rem;
+    color: var(--gray-color);
+    font-style: italic;
+}
+
+@media (max-width: 768px) {
+    .chatbot-container {
+        grid-template-columns: 1fr;
+        height: auto;
+    }
+
+    .chatbot-sidebar {
+        max-height: 300px;
+    }
+
+    .chatbot-main {
+        height: 500px;
+    }
+
+    .message {
+        max-width: 90%;
+    }
+}
+</style>
+{% endblock %}

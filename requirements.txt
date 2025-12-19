@@ -1,0 +1,12 @@
+Flask==2.3.2
+Werkzeug==2.3.6
+Jinja2==3.1.2
+boto3>=1.35.0
+requests==2.31.0
+pyOpenSSL==23.2.0
+python-dateutil==2.8.2
+gunicorn==21.2.0
+cryptography==41.0.3
+schedule==1.2.0
+strands-agents
+strands-agents-tools

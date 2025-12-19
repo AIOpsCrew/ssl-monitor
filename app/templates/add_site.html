@@ -1,0 +1,30 @@
+{% extends "base.html" %}
+
+{% block content %}
+<h2>Add Website</h2>
+
+<form method="post" action="{{ url_for('add') }}" class="form">
+    <div class="form-group">
+        <label for="url">Website URL:</label>
+        <input type="text" id="url" name="url" placeholder="example.com" required>
+        <small>Enter domain name or full URL (https:// will be added if missing)</small>
+    </div>
+    
+    <div class="form-group">
+        <label for="name">Friendly Name:</label>
+        <input type="text" id="name" name="name" placeholder="Example Website">
+        <small>Optional - will use URL if not provided</small>
+    </div>
+    
+    <div class="form-group">
+        <label for="related_domains">Related Domains (Same Certificate):</label>
+        <textarea id="related_domains" name="related_domains" rows="3" class="form-control" placeholder="www.example.com,subdomain.example.com"></textarea>
+        <small>Optional - Enter comma-separated domains that share the same certificate (e.g., www variant, subdomains)</small>
+    </div>
+    
+    <div class="form-actions">
+        <button type="submit" class="btn btn-primary">Add Website</button>
+        <a href="{{ url_for('index') }}" class="btn">Cancel</a>
+    </div>
+</form>
+{% endblock %}

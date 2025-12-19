@@ -1,0 +1,468 @@
+{% extends "base.html" %}
+
+{% block content %}
+<h2>Monitored Websites</h2>
+
+{% if websites %}
+    <!-- Status Filters -->
+    <div class="status-filters">
+        <button class="filter-btn active" data-status="all">
+            All <span class="count">({{ websites|length }})</span>
+        </button>
+        <button class="filter-btn filter-good" data-status="good">
+            <span class="filter-icon green"></span>
+            Good <span class="count">({{ websites|selectattr('status', 'equalto', 'good')|list|length }})</span>
+        </button>
+        <button class="filter-btn filter-expiring" data-status="expiring">
+            <span class="filter-icon yellow"></span>
+            Expiring <span class="count">({{ websites|selectattr('status', 'equalto', 'expiring')|list|length }})</span>
+        </button>
+        <button class="filter-btn filter-expired" data-status="expired">
+            <span class="filter-icon red"></span>
+            Expired <span class="count">({{ websites|selectattr('status', 'equalto', 'expired')|list|length }})</span>
+        </button>
+        <button class="filter-btn filter-unknown" data-status="unknown">
+            <span class="filter-icon gray"></span>
+            Unknown <span class="count">({{ (websites|rejectattr('status', 'in', ['good', 'expiring', 'expired'])|list|length) }})</span>
+        </button>
+    </div>
+
+    <div class="website-grid">
+        <div class="grid-header">
+            <div class="col">Website</div>
+            <div class="col">Status</div>
+            <div class="col">Expiry Date</div>
+            <div class="col">Days Remaining</div>
+            <div class="col">Actions</div>
+        </div>
+        
+        {% for website in websites %}
+        <div class="grid-row" data-status="{% if website.status in ['good', 'expiring', 'expired'] %}{{ website.status }}{% else %}unknown{% endif %}">
+            <div class="col website-info">
+                <h3>{{ website.name }}</h3>
+                <p>{{ website.url }}</p>
+                {% if website.related_domains %}
+                <div class="related-domains">
+                    <small>Related domains: 
+                        {% for domain in website.related_domains %}
+                            {{ domain.replace('https://', '').replace('http://', '') }}{% if not loop.last %}, {% endif %}
+                        {% endfor %}
+                    </small>
+                </div>
+                {% endif %}
+            </div>
+            <div class="col status">
+                {% if website.status == 'good' %}
+                    <div class="status-flag green" title="Certificate is valid"></div>
+                {% elif website.status == 'expiring' %}
+                    <div class="status-flag yellow" title="Certificate is expiring soon"></div>
+                {% elif website.status == 'expired' %}
+                    <div class="status-flag red" title="Certificate has expired!"></div>
+                {% else %}
+                    <div class="status-flag gray" title="Certificate status unknown"></div>
+                {% endif %}
+            </div>
+            <div class="col">{{ website.expiry_date }}</div>
+            <div class="col">
+                {% if website.days_remaining != 'Unknown' %}
+                    {{ website.days_remaining }} days
+                {% else %}
+                    Unknown
+                {% endif %}
+            </div>
+            <div class="col actions">
+                {% set clean_url = website.url|replace('https://', '')|replace('http://', '') %}
+                {% set domain = clean_url.split('/')[0] %}
+                {% if website.status == 'error' or website.status == 'unknown' or website.status == 'expired' %}
+                    <button class="btn btn-small btn-investigate"
+                            data-domain="{{ domain }}"
+                            data-name="{{ website.name }}"
+                            onclick="investigateDomain(this)">
+                        🔍 Investigate
+                    </button>
+                {% endif %}
+                <a href="{{ url_for('check', website_id=website.id) }}" class="btn btn-small">Check</a>
+                <a href="{{ url_for('remove', website_id=website.id) }}" class="btn btn-small btn-danger" onclick="return confirm('Are you sure you want to remove this website?')">Remove</a>
+            </div>
+        </div>
+        {% endfor %}
+    </div>
+{% else %}
+    <div class="empty-state">
+        <p>No websites are being monitored. <a href="{{ url_for('add') }}">Add a website</a> to get started.</p>
+    </div>
+{% endif %}
+
+<!-- Popup Chat Window -->
+<div id="chatPopup" class="chat-popup hidden">
+    <div class="chat-popup-header" onclick="toggleMinimizeChat()">
+        <h3 id="chatPopupTitle">AI Investigation</h3>
+        <div class="header-buttons">
+            <button onclick="event.stopPropagation(); toggleMinimizeChat()" class="minimize-btn" id="minimizeBtn" title="Minimize">−</button>
+            <button onclick="event.stopPropagation(); closeChatPopup()" class="close-btn" title="Close">&times;</button>
+        </div>
+    </div>
+    <div class="chat-popup-content" id="chatPopupContent">
+        <div class="chat-popup-messages" id="chatPopupMessages">
+            <!-- Messages will be added here -->
+        </div>
+        <div class="chat-popup-input">
+            <input type="text" id="chatPopupInput" placeholder="Ask about this domain..." />
+            <button onclick="sendPopupMessage()" class="btn btn-primary">Send</button>
+        </div>
+        <div class="chat-popup-status" id="chatPopupStatus"></div>
+    </div>
+</div>
+
+<style>
+.btn-investigate {
+    background-color: #9b59b6;
+    color: white;
+}
+
+.btn-investigate:hover {
+    background-color: #8e44ad;
+}
+
+.chat-popup {
+    position: fixed;
+    bottom: 20px;
+    right: 20px;
+    width: 75vw;
+    height: 75vh;
+    background: white;
+    border-radius: 12px;
+    box-shadow: 0 10px 40px rgba(0, 0, 0, 0.3);
+    display: flex;
+    flex-direction: column;
+    z-index: 1000;
+    transition: transform 0.3s ease, opacity 0.3s ease;
+    transform: translateY(0);
+    overflow: hidden;
+}
+
+.chat-popup.hidden {
+    transform: translateY(600px);
+    opacity: 0;
+    pointer-events: none;
+}
+
+.chat-popup-header {
+    padding: 15px 20px;
+    background: var(--dark-gray);
+    color: white;
+    border-radius: 12px 12px 0 0;
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    cursor: pointer;
+    user-select: none;
+}
+
+.chat-popup.minimized .chat-popup-header {
+    border-radius: 12px;
+}
+
+.chat-popup-header h3 {
+    margin: 0;
+    font-size: 1.1rem;
+}
+
+.header-buttons {
+    display: flex;
+    gap: 5px;
+}
+
+.minimize-btn,
+.close-btn {
+    background: none;
+    border: none;
+    color: white;
+    font-size: 1.5rem;
+    cursor: pointer;
+    padding: 0;
+    width: 30px;
+    height: 30px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    transition: background 0.2s;
+}
+
+.minimize-btn:hover,
+.close-btn:hover {
+    background: rgba(255, 255, 255, 0.1);
+    border-radius: 4px;
+}
+
+.chat-popup-content {
+    display: flex;
+    flex-direction: column;
+    flex: 1;
+    overflow: hidden;
+}
+
+.chat-popup.minimized .chat-popup-content {
+    display: none;
+}
+
+.chat-popup.minimized {
+    height: auto;
+    width: 350px;
+}
+
+.chat-popup-messages {
+    flex: 1;
+    overflow-y: auto;
+    padding: 15px;
+    display: flex;
+    flex-direction: column;
+    gap: 12px;
+}
+
+.popup-message {
+    max-width: 85%;
+    padding: 10px 14px;
+    border-radius: 12px;
+    line-height: 1.5;
+}
+
+.popup-message.user {
+    align-self: flex-end;
+    background: var(--primary-color);
+    color: white;
+}
+
+.popup-message.agent {
+    align-self: flex-start;
+    background: #f0f0f0;
+    color: var(--dark-gray);
+}
+
+.popup-message.system {
+    align-self: center;
+    background: #e8f5e9;
+    color: #2e7d32;
+    font-style: italic;
+    font-size: 0.9rem;
+}
+
+.chat-popup-input {
+    display: flex;
+    gap: 8px;
+    padding: 12px;
+    border-top: 1px solid #ddd;
+}
+
+.chat-popup-input input {
+    flex: 1;
+    padding: 10px;
+    border: 1px solid #ddd;
+    border-radius: 6px;
+    font-size: 0.95rem;
+}
+
+.chat-popup-input button {
+    padding: 10px 20px;
+}
+
+.chat-popup-status {
+    padding: 8px 12px;
+    font-size: 0.85rem;
+    color: var(--gray-color);
+    font-style: italic;
+    min-height: 30px;
+}
+
+/* Code formatting in chat messages */
+.popup-message code {
+    background-color: #f4f4f4;
+    padding: 2px 6px;
+    border-radius: 3px;
+    font-family: 'Courier New', Courier, monospace;
+    font-size: 0.9em;
+    color: #333;
+}
+
+.popup-message.agent code {
+    background-color: #e9ecef;
+    color: #333;
+}
+
+.popup-message pre {
+    background-color: #2d2d2d;
+    color: #c0c0c0;
+    padding: 12px;
+    border-radius: 6px;
+    overflow-x: auto;
+    margin: 8px 0;
+    font-family: 'Courier New', Courier, monospace;
+    font-size: 0.85em;
+    line-height: 1.4;
+}
+
+.popup-message pre code {
+    background-color: transparent;
+    padding: 0;
+    color: #c0c0c0;
+    font-size: 1em;
+}
+
+.popup-message h3 {
+    font-size: 1.1rem;
+    margin: 12px 0 8px 0;
+    color: var(--dark-gray);
+    font-weight: 600;
+}
+
+@media (max-width: 768px) {
+    .chat-popup {
+        width: calc(100% - 40px);
+        height: 400px;
+    }
+}
+</style>
+
+<script>
+let currentDomain = '';
+
+function investigateDomain(button) {
+    const domain = button.getAttribute('data-domain');
+    const name = button.getAttribute('data-name');
+
+    currentDomain = domain;
+
+    // Open popup
+    const popup = document.getElementById('chatPopup');
+    const title = document.getElementById('chatPopupTitle');
+    const messages = document.getElementById('chatPopupMessages');
+
+    title.textContent = `Investigating: ${name}`;
+    messages.innerHTML = '';
+
+    popup.classList.remove('hidden');
+
+    // Add system message
+    addPopupMessage(`Starting investigation of ${domain}...`, 'system');
+
+    // Auto-send investigation prompt
+    const investigationPrompt = `Please investigate the SSL certificate error for ${domain}. Check the certificate status, perform a DNS lookup if needed, and explain what might be causing the issue.`;
+
+    sendAgentMessage(investigationPrompt);
+}
+
+function closeChatPopup() {
+    document.getElementById('chatPopup').classList.add('hidden');
+}
+
+function toggleMinimizeChat() {
+    const popup = document.getElementById('chatPopup');
+    const minimizeBtn = document.getElementById('minimizeBtn');
+
+    popup.classList.toggle('minimized');
+
+    if (popup.classList.contains('minimized')) {
+        minimizeBtn.innerHTML = '□';
+        minimizeBtn.title = 'Restore';
+    } else {
+        minimizeBtn.innerHTML = '−';
+        minimizeBtn.title = 'Minimize';
+    }
+}
+
+function addPopupMessage(text, sender) {
+    const messages = document.getElementById('chatPopupMessages');
+    const messageDiv = document.createElement('div');
+    messageDiv.className = `popup-message ${sender}`;
+
+    // Format text with markdown support
+    let formattedText = text;
+
+    // First, handle code blocks (triple backticks)
+    formattedText = formattedText.replace(/```([\s\S]*?)```/g, function(match, code) {
+        return '<pre><code>' + code.trim() + '</code></pre>';
+    });
+
+    // Handle inline code (single backticks) - but not inside <pre> tags
+    formattedText = formattedText.replace(/`([^`]+)`/g, '<code>$1</code>');
+
+    // Handle headers (###, ##, #)
+    formattedText = formattedText.replace(/^### (.+)$/gm, '<h3>$1</h3>');
+    formattedText = formattedText.replace(/^## (.+)$/gm, '<h3>$1</h3>');
+    formattedText = formattedText.replace(/^# (.+)$/gm, '<h3>$1</h3>');
+
+    // Handle other formatting
+    formattedText = formattedText
+        .replace(/\n/g, '<br>')
+        .replace(/\*\*(.+?)\*\*/g, '<strong>$1</strong>')
+        .replace(/^(\d+)\.\s(.+)$/gm, '<div class="list-item">$1. $2</div>')
+        .replace(/^[-*]\s(.+)$/gm, '<div class="list-item">• $1</div>');
+
+    messageDiv.innerHTML = formattedText;
+    messages.appendChild(messageDiv);
+
+    // Scroll to bottom
+    messages.scrollTop = messages.scrollHeight;
+}
+
+async function sendAgentMessage(message) {
+    const status = document.getElementById('chatPopupStatus');
+    status.textContent = 'Agent is investigating...';
+
+    try {
+        const response = await fetch('/api/chat', {
+            method: 'POST',
+            headers: {
+                'Content-Type': 'application/json'
+            },
+            body: JSON.stringify({
+                message: message,
+                history: []
+            })
+        });
+
+        const data = await response.json();
+
+        if (response.ok) {
+            addPopupMessage(data.message, 'agent');
+            status.textContent = '';
+        } else {
+            status.textContent = 'Error: ' + (data.error || 'Failed to get response');
+            status.style.color = 'var(--danger-color)';
+        }
+    } catch (error) {
+        console.error('Chat error:', error);
+        status.textContent = 'Error: Unable to connect to agent';
+        status.style.color = 'var(--danger-color)';
+    }
+}
+
+function sendPopupMessage() {
+    const input = document.getElementById('chatPopupInput');
+    const message = input.value.trim();
+
+    if (!message) return;
+
+    // Add user message
+    addPopupMessage(message, 'user');
+    input.value = '';
+
+    // Send to agent
+    sendAgentMessage(message);
+}
+
+// Allow Enter key to send message
+document.addEventListener('DOMContentLoaded', function() {
+    const input = document.getElementById('chatPopupInput');
+    if (input) {
+        input.addEventListener('keydown', function(e) {
+            if (e.key === 'Enter') {
+                e.preventDefault();
+                sendPopupMessage();
+            }
+        });
+    }
+});
+</script>
+
+{% endblock %}

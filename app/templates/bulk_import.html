@@ -1,0 +1,46 @@
+{% extends "base.html" %}
+
+{% block content %}
+<h2>Bulk Import Websites</h2>
+
+<form method="post" action="{{ url_for('bulk_import') }}" class="form">
+    <div class="form-group">
+        <label for="domains">Domain Names:</label>
+        <textarea id="domains" name="domains" rows="10" placeholder="Enter one domain per line or comma-separated list (website1.com,website2.com)" class="form-control" required></textarea>
+        <small>Enter domain names without http:// or https:// prefix. The domain name will be used as the friendly name.</small>
+    </div>
+    
+    <div class="form-group">
+        <label>Group Related Domains:</label>
+        <div class="radio-group">
+            <label>
+                <input type="radio" name="group_mode" value="none" checked> 
+                No Grouping
+            </label>
+            <label>
+                <input type="radio" name="group_mode" value="auto"> 
+                Auto-detect Related Domains (www variants)
+            </label>
+            <label>
+                <input type="radio" name="group_mode" value="pattern"> 
+                Group by Domain Pattern
+            </label>
+        </div>
+    </div>
+    
+    <div class="form-actions">
+        <button type="submit" class="btn btn-primary">Import Websites</button>
+        <a href="{{ url_for('index') }}" class="btn">Cancel</a>
+    </div>
+</form>
+
+<div class="help-box">
+    <h3>About Domain Grouping</h3>
+    <p>Use domain grouping to combine related domains that share the same SSL certificate:</p>
+    <ul>
+        <li><strong>No Grouping:</strong> Each domain is monitored separately.</li>
+        <li><strong>Auto-detect Related Domains:</strong> Automatically groups www and non-www versions of the same domain (e.g., example.com and www.example.com).</li>
+        <li><strong>Group by Domain Pattern:</strong> Domains with the same base domain are grouped (e.g., example.com, blog.example.com, store.example.com).</li>
+    </ul>
+</div>
+{% endblock %}

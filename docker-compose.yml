@@ -1,0 +1,47 @@
+version: '3.8'
+
+services:
+  ssl-monitor:
+    build: .
+    container_name: ssl-certificate-monitor
+    restart: unless-stopped
+    volumes:
+      - ./data:/app/data
+    environment:
+      - SECRET_KEY=changeme_to_a_secure_key
+      - DEBUG=False
+      - AWS_REGION=us-east-1
+      - SNS_TOPIC_ARN=${SNS_TOPIC_ARN:-}
+      - AWS_ACCESS_KEY_ID=${AWS_ACCESS_KEY_ID:-}
+      - AWS_SECRET_ACCESS_KEY=${AWS_SECRET_ACCESS_KEY:-}
+      - EXPIRING_THRESHOLD=30
+    ports:
+      - "5000:5000"
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:5000/"]
+      interval: 1m
+      timeout: 10s
+      retries: 3
+      start_period: 30s
+
+  # Uncomment this section if you want to run scheduled checks
+  # scheduler:
+  #   build: .
+  #   container_name: ssl-certificate-scheduler
+  #   restart: unless-stopped
+  #   volumes:
+  #     - ./data:/app/data
+  #   environment:
+  #     - SECRET_KEY=changeme_to_a_secure_key
+  #     - DEBUG=False
+  #     - AWS_REGION=us-east-1
+  #     - SNS_TOPIC_ARN=${SNS_TOPIC_ARN:-}
+  #     - AWS_ACCESS_KEY_ID=${AWS_ACCESS_KEY_ID:-}
+  #     - AWS_SECRET_ACCESS_KEY=${AWS_SECRET_ACCESS_KEY:-}
+  #     - EXPIRING_THRESHOLD=30
+  #   command: python -m app.scheduler
+  #   depends_on:
+  #     - ssl-monitor
+
+volumes:
+  data:
